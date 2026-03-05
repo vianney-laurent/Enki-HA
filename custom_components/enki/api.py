@@ -229,9 +229,11 @@ class API:
         
         details = await self.get_light_details(home_id, node_id)
         if "lastReportedValue" not in details or not details["lastReportedValue"]:
-            # If the API doesn't return lastReportedValue, initialize an empty payload
-            data = {}
-            LOGGER.warning("Enki API: No lastReportedValue found for node %s during state change. Sending partial payload.", node_id)
+            # If the API doesn't return lastReportedValue, initialize a baseline payload
+            # The Enki API rejects empty payloads (400 Bad Request) for lights.
+            # It expects at least the 'power' field to be present.
+            data = {"power": "ON" if value != "OFF" else "OFF"}
+            LOGGER.warning("Enki API: No lastReportedValue found for node %s during state change. Generating baseline power payload: %s", node_id, data)
         else:
             data = details["lastReportedValue"]
             
