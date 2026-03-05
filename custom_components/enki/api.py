@@ -227,7 +227,14 @@ class API:
     async def change_light_state(self, home_id, node_id, parameter, value):
         await self.check_connected()
         
-        data = (await self.get_light_details(home_id, node_id))["lastReportedValue"]
+        details = await self.get_light_details(home_id, node_id)
+        if "lastReportedValue" not in details or not details["lastReportedValue"]:
+            # If the API doesn't return lastReportedValue, initialize an empty payload
+            data = {}
+            LOGGER.warning("Enki API: No lastReportedValue found for node %s during state change. Sending partial payload.", node_id)
+        else:
+            data = details["lastReportedValue"]
+            
         data[parameter] = value
         
         async with aiohttp.ClientSession() as session, session.request(

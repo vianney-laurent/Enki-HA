@@ -96,8 +96,10 @@ class EnkiLight(EnkiBaseEntity, LightEntity):
         """Return if the binary sensor is on."""
         # This needs to enumerate to true or false
         last_reported_values = self.coordinator.get_device_parameter(self.node_id, "lastReportedValue")
+        if not last_reported_values:
+            return None
         return (
-            last_reported_values["power"] == "ON"
+            last_reported_values.get("power") == "ON"
         )
 
     def closest_temp_value(self, target_value):
@@ -130,10 +132,14 @@ class EnkiLight(EnkiBaseEntity, LightEntity):
     def brightness(self) -> Optional[int]:
         """Return the current brightness."""
         last_reported_values = self.coordinator.get_device_parameter(self.node_id, "lastReportedValue")
+        if not last_reported_values or "brightness" not in last_reported_values:
+            return None
         return last_reported_values["brightness"]*(255/self.BRIGHTNESS_SCALE[1])
     
     @property
     def color_temp_kelvin(self) -> int | None:
         """Return the color temperature in Kelvin."""
         last_reported_values = self.coordinator.get_device_parameter(self.node_id, "lastReportedValue")
+        if not last_reported_values or "colorTemperature" not in last_reported_values:
+            return None
         return int(last_reported_values["colorTemperature"][1:-1])
