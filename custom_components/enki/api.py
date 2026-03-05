@@ -152,10 +152,14 @@ class API:
         """Update device details"""
         device_info = await self.get_device(device.get("deviceId"))
         self.merge_properties(device, device_info)
-        if device["type"] == "lights" and device["isEnabled"]:
-            # get lights details (on/off, brightness, temperature, etc)
-            light_details = await self.get_light_details(device.get("homeId"), device.get("nodeId"))
-            self.merge_properties(device, light_details)
+        if device.get("type") == "lights" and device.get("isEnabled"):
+            try:
+                # get lights details (on/off, brightness, temperature, etc)
+                light_details = await self.get_light_details(device.get("homeId"), device.get("nodeId"))
+                self.merge_properties(device, light_details)
+            except ValueError as e:
+                LOGGER.warning("Could not fetch light details for device %s (node %s): %s", 
+                               device.get("deviceName"), device.get("nodeId"), e)
         return device
 
     async def get_node(self, home_id, node_id):
