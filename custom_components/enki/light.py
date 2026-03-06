@@ -54,6 +54,10 @@ class EnkiLight(EnkiBaseEntity, LightEntity):
         """Initialise entity."""
         super().__init__(coordinator, device, parameter)
         self._device = device
+        self._last_command_time = 0
+        self._expected_power = None
+        self._expected_brightness = None
+        self._expected_color_temp = None
         if "possibleValues" in device and "change_brightness" in device["possibleValues"]:
             min = device["possibleValues"]["change_brightness"]["range"]["min"]
             max = device["possibleValues"]["change_brightness"]["range"]["max"]
@@ -94,7 +98,10 @@ class EnkiLight(EnkiBaseEntity, LightEntity):
     @property
     def is_on(self) -> bool | None:
         """Return if the binary sensor is on."""
-        # This needs to enumerate to true or false
+        import time
+        if time.time() - getattr(self, "_last_command_time", 0) < 10 and getattr(self, "_expected_power", None) is not None:
+            return self._expected_power
+
         last_reported_values = self.coordinator.get_device_parameter(self.node_id, "lastReportedValue")
         if not last_reported_values:
             return None
@@ -107,8 +114,13 @@ class EnkiLight(EnkiBaseEntity, LightEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
+        import time
+        self._last_command_time = time.time()
+        self._expected_power = True
+
         if "brightness" in kwargs:
             ha_value = kwargs["brightness"]
+            self._expected_brightness = ha_value
             value = round(ha_value / (255/self.BRIGHTNESS_SCALE[1]), 2)
             LOGGER.debug(f"setting brightness value to {ha_value} => {value}")
             await self.coordinator.api.change_light_state(self._device["homeId"], self._device["nodeId"], "brightness", value)
@@ -116,6 +128,7 @@ class EnkiLight(EnkiBaseEntity, LightEntity):
             self.coordinator.update_data(self.node_id, "lastReportedValue", "power", "ON")
         elif "color_temp_kelvin" in kwargs:
             ha_value = kwargs["color_temp_kelvin"]
+            self._expected_color_temp = ha_value
             value = self.closest_temp_value(ha_value)
             LOGGER.debug("setting color temp to closest value : " + str(ha_value) + " => " + str(value))
             await self.coordinator.api.change_light_state(self._device["homeId"], self._device["nodeId"], "colorTemperature", "T" + str(value) + "K")
@@ -129,6 +142,10 @@ class EnkiLight(EnkiBaseEntity, LightEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the entity off."""
+        import time
+        self._last_command_time = time.time()
+        self._expected_power = False
+        
         await self.coordinator.api.change_light_state(self._device["homeId"], self._device["nodeId"], "power", "OFF")
         self.coordinator.update_data(self.node_id, "lastReportedValue", "power", "OFF")
         
@@ -137,6 +154,10 @@ class EnkiLight(EnkiBaseEntity, LightEntity):
     @property
     def brightness(self) -> Optional[int]:
         """Return the current brightness."""
+        import time
+        if time.time() - getattr(self, "_last_command_time", 0) < 10 and getattr(self, "_expected_brightness", None) is not None:
+            return self._expected_brightness
+
         last_reported_values = self.coordinator.get_device_parameter(self.node_id, "lastReportedValue")
         if not last_reported_values or "brightness" not in last_reported_values:
             return None
@@ -145,6 +166,10 @@ class EnkiLight(EnkiBaseEntity, LightEntity):
     @property
     def color_temp_kelvin(self) -> int | None:
         """Return the color temperature in Kelvin."""
+        import time
+        if time.time() - getattr(self, "_last_command_time", 0) < 10 and getattr(self, "_expected_color_temp", None) is not None:
+            return self._expected_color_temp
+
         last_reported_values = self.coordinator.get_device_parameter(self.node_id, "lastReportedValue")
         if not last_reported_values or "colorTemperature" not in last_reported_values:
             return None

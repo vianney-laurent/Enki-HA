@@ -105,6 +105,26 @@ class API:
             if prop != "id":
                 device[prop] = properties[prop]
 
+    def _extract_devices(self, items, home_id):
+        devices = []
+        for item in items:
+            if "items" in item:
+                devices.extend(self._extract_devices(item["items"], home_id))
+            
+            if "metadata" not in item or "deviceId" not in item["metadata"]:
+                continue
+                
+            device = {
+                "homeId": home_id,
+                "deviceId": item["metadata"]["deviceId"],
+                "nodeId": item["metadata"]["nodeId"],
+                "deviceName": item["title"]["label"],
+                "state": item.get("state", ""),
+                "isEnabled": item.get("isEnabled", True)
+            }
+            devices.append(device)
+        return devices
+
     async def get_items_in_section_for_home(self, home_id) -> list[dict[str, Any]]:
             """Get sections in home."""
             await self.check_connected()
@@ -118,27 +138,27 @@ class API:
                 if resp.status == 200:
                     response = await resp.json()
                     LOGGER.debug("get_items_in_section_for_home : %s", response)
-                    for section in response["sections"]:
-                        for item in section["items"]:
-                            if 'deviceId' not in item["metadata"].keys():
-                                continue
-                            device = {
-                                "homeId": home_id,
-                                "deviceId": item["metadata"]["deviceId"],
-                                "nodeId": item["metadata"]["nodeId"],
-                                "deviceName": item["title"]["label"],
-                                "state": item["state"],
-                                "isEnabled": item["isEnabled"]
-                            }
-                            devices.append(device)
-
+                    for section in response.get("sections", []):
+                        extracted_devices = self._extract_devices(section.get("items", []), home_id)
+                        for device in extracted_devices:
                             node_info = await self.get_node(home_id, device.get("nodeId"))
                             self.merge_properties(device, node_info)
                             
                             device_info = await self.get_device(device.get("deviceId"))
                             self.merge_properties(device, device_info)
 
+                            # Broaden the definition of a light to include grouped bulbs, plugs acting as lights, or alternative Enki types
+                            dev_type = str(device.get("type", "")).lower()
+                            is_light = "light" in dev_type or "ampoule" in dev_type or "bulb" in dev_type or dev_type in ["lights"]
+                            capabilities = device.get("capabilities", [])
+                            if not is_light and ("change_brightness" in capabilities or "change_color_temperature" in capabilities):
+                                is_light = True
+                            
+                            if is_light:
+                                device["type"] = "lights"
+
                             await self.refresh_device(device)
+                            devices.append(device)
 
                             LOGGER.debug("device : %r", device)
                     return devices
