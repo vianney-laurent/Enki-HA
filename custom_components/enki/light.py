@@ -113,12 +113,14 @@ class EnkiLight(EnkiBaseEntity, LightEntity):
             LOGGER.debug(f"setting brightness value to {ha_value} => {value}")
             await self.coordinator.api.change_light_state(self._device["homeId"], self._device["nodeId"], "brightness", value)
             self.coordinator.update_data(self.node_id, "lastReportedValue", "brightness", value)
+            self.coordinator.update_data(self.node_id, "lastReportedValue", "power", "ON")
         elif "color_temp_kelvin" in kwargs:
             ha_value = kwargs["color_temp_kelvin"]
             value = self.closest_temp_value(ha_value)
             LOGGER.debug("setting color temp to closest value : " + str(ha_value) + " => " + str(value))
             await self.coordinator.api.change_light_state(self._device["homeId"], self._device["nodeId"], "colorTemperature", "T" + str(value) + "K")
             self.coordinator.update_data(self.node_id, "lastReportedValue", "colorTemperature", "T" + str(value) + "K")
+            self.coordinator.update_data(self.node_id, "lastReportedValue", "power", "ON")
         else:
             await self.coordinator.api.change_light_state(self._device["homeId"], self._device["nodeId"], "power", "ON")
             self.coordinator.update_data(self.node_id, "lastReportedValue", "power", "ON")
