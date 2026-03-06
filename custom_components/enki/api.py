@@ -182,6 +182,26 @@ class API:
                                device.get("deviceName"), device.get("nodeId"), e)
         return device
 
+    async def get_nodes_for_home(self, home_id):
+        """Get all nodes for a home."""
+        await self.check_connected()
+        async with aiohttp.ClientSession() as session, session.request(
+            method="GET",
+            url=f"{ENKI_URL}/api-enki-node-agg-prod/v1/nodes",
+            headers={"Authorization": f"{self._token_type} {self._access_token}",
+                    "X-Gateway-APIKey": ENKI_NODE_API_KEY,
+                    "homeId": f"{home_id}"},
+            proxy=proxy,) as resp:
+
+                if resp.status == 200:
+                    response = await resp.json()
+                    LOGGER.debug("get_nodes_for_home : %s", response)
+                    return response.get("items", [])
+                else:
+                    error_text = await resp.text()
+                    LOGGER.error("Error on get_nodes_for_home. HTTP Status: %s, Response: %s", resp.status, error_text)
+                    return []
+
     async def get_node(self, home_id, node_id):
         """Get details on a node."""
         await self.check_connected()
@@ -278,11 +298,47 @@ class API:
     async def get_devices(self) -> list[dict[str, Any]]:
         """Get devices on api."""
         homes = await self.get_homes()
-        devices = []
-        for home in homes:
-            devices.extend(await self.get_items_in_section_for_home(home))
+        devices_dict = {}
+        for home_id in homes:
+            # First, fetch from dashboard to get user-friendly names and room info
+            dashboard_devices = await self.get_items_in_section_for_home(home_id)
+            for dev in dashboard_devices:
+                devices_dict[dev["nodeId"]] = dev
+            
+            # Second, fetch all nodes to find anything missing from dashboard
+            all_nodes = await self.get_nodes_for_home(home_id)
+            for node in all_nodes:
+                node_id = node.get("id")
+                if node_id not in devices_dict:
+                    LOGGER.info("Enki discovery: Found node %s not in dashboard. Adding it manually.", node_id)
+                    device = {
+                        "homeId": home_id,
+                        "deviceId": node.get("deviceId"),
+                        "nodeId": node_id,
+                        "deviceName": node.get("alias") or f"Device {node_id}",
+                        "state": node.get("state", ""),
+                        "isEnabled": node.get("isEnabled", True)
+                    }
+                    # Enrich and refresh
+                    node_info = await self.get_node(home_id, node_id)
+                    self.merge_properties(device, node_info)
+                    
+                    device_info = await self.get_device(device.get("deviceId"))
+                    self.merge_properties(device, device_info)
 
-        return devices
+                    # Broaden the definition of a light
+                    dev_type = str(device.get("type", "")).lower()
+                    capabilities = device.get("capabilities", [])
+                    is_light = "light" in dev_type or "ampoule" in dev_type or "bulb" in dev_type or dev_type in ["lights"]
+                    if not is_light and ("change_brightness" in capabilities or "change_color_temperature" in capabilities):
+                        is_light = True
+                    
+                    if is_light:
+                        device["type"] = "lights"
+                        await self.refresh_device(device)
+                        devices_dict[node_id] = device
+
+        return list(devices_dict.values())
 
 class APIAuthError(Exception):
     """Exception class for auth error."""
