@@ -123,10 +123,14 @@ class EnkiLight(EnkiBaseEntity, LightEntity):
             await self.coordinator.api.change_light_state(self._device["homeId"], self._device["nodeId"], "power", "ON")
             self.coordinator.update_data(self.node_id, "lastReportedValue", "power", "ON")
 
+        self.async_write_ha_state()
+
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the entity off."""
         await self.coordinator.api.change_light_state(self._device["homeId"], self._device["nodeId"], "power", "OFF")
         self.coordinator.update_data(self.node_id, "lastReportedValue", "power", "OFF")
+        
+        self.async_write_ha_state()
 
     @property
     def brightness(self) -> Optional[int]:
