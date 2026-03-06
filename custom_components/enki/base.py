@@ -99,7 +99,7 @@ class EnkiBaseEntity(CoordinatorEntity):
             identifiers={
                 (
                     DOMAIN,
-                    self.coordinator.get_device_parameter(self.node_id, "node_Id"),
+                    self.coordinator.get_device_parameter(self.node_id, "nodeId"),
                 )
             },
         )
